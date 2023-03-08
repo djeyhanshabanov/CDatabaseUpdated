@@ -17,6 +17,7 @@ public:
 
 	void OnLoad();
 	void DeleteAll();
+	BOOL OnDeleteAll();
 };
 
 class CUserItem : public CObject
@@ -24,6 +25,8 @@ class CUserItem : public CObject
 public:
 	CUserItem();
 	~CUserItem();
+
+	CDatabase* m_BaseConnection;
 
 	int m_nID;
 	CString m_strFirstName; // Лично име
@@ -63,21 +66,6 @@ protected:
 	afx_msg HCURSOR OnQueryDragIcon();
 	DECLARE_MESSAGE_MAP()
 public:
-	enum Action : uint8_t
-	{
-		C = 1,
-		R = 2,
-		D = 3,
-		U = 4,
-		DA = 5,
-		N = 0 
-	};
-	CListCtrl m_ListControl;	
-	CString m_Id;                   // Variable (Value)
-	CString m_Name;                 // Variable (Value)
-	CString m_Surname;              // Variable (Value)
-	CString m_PhoneNum;             // Variable (Value)
-	CString m_EmailAddress;         // Variable (Value)
 	afx_msg void OnEnChangeEditId();
 	afx_msg void OnEnChangeEditName();
 	afx_msg void OnEnChangeEditSurname();
@@ -91,14 +79,18 @@ public:
 	afx_msg void OnLvnItemchangedList(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg afx_msg void OnNMClickList1(NMHDR* pNMHDR, LRESULT* pResult);
 	void CCDatabaseDlg::CRUD(int action);
-	CEdit m_Id1;                    // Variable (Control)
-	CEdit m_Name1;                  // Variable (Control)
-	CEdit m_Surname1;               // Variable (Control)
-	CEdit m_PhoneNum1;              // Variable (Control)
-	CEdit m_EmailAddress1;          // Variable (Control)
 	void CCDatabaseDlg::Clear();
+
+	CEdit m_ecId;
+	CEdit m_ecName;
+	CEdit m_ecSurname;
+	CEdit m_ecPhoneNum;
+	CEdit m_ecEmailAddress;
+
+	CListCtrl m_Grid;
 
 	CDatabase m_ServerConnection;
 	CUserContainer m_oaUserContainer;
+	CUserItem m_oUserItems;
 	void UpdateGrid(CUserContainer* oaUserContainer);
 };

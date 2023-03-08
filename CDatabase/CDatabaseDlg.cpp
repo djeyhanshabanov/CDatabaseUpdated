@@ -23,8 +23,6 @@ CUserContainer::CUserContainer()
 CUserContainer::~CUserContainer()
 {
 	DeleteAll();
-	m_BaseConnection->Close();
-	delete m_BaseConnection;
 };
 
 void CUserContainer::OnLoad()
@@ -71,17 +69,34 @@ void CUserContainer::DeleteAll()
 	RemoveAll();
 };
 
+BOOL CUserContainer::OnDeleteAll()
+{
+	if (m_BaseConnection == NULL)
+	{
+		return FALSE;
+	}
+
+	CRecordset pRecordset(m_BaseConnection);
+
+	CString strQuery;
+	strQuery.Format(L"DELETE FROM usertable");
+
+	m_BaseConnection->ExecuteSQL(strQuery);
+
+	return TRUE;
+};
+
 /////////////////////////////////////////////////////////
 // CUserItem
 
 CUserItem::CUserItem()
 {
+	m_BaseConnection = NULL;
 	Clear();
 };
 
 CUserItem::~CUserItem()
 {
-
 };
 
 void CUserItem::Clear()
@@ -95,6 +110,13 @@ void CUserItem::Clear()
 
 BOOL CUserItem::OnSave()
 {
+	if (m_BaseConnection == NULL)
+	{
+		return FALSE;
+	}
+
+	CRecordset pRecordset(m_BaseConnection);
+
 	CString strQuery;
 
 	if (m_nID <= 0)
@@ -108,13 +130,24 @@ BOOL CUserItem::OnSave()
 			, m_strFirstName, m_strLastName, m_strTelephoneNumber, m_strEmailAddress, m_nID);
 	}
 
+	m_BaseConnection->ExecuteSQL(strQuery);
+
 	return TRUE;
 };
 
 BOOL CUserItem::OnDelete()
 {
+	if (m_BaseConnection == NULL)
+	{
+		return FALSE;
+	}
+
+	CRecordset pRecordset(m_BaseConnection);
+
 	CString strQuery;
 	strQuery.Format(L"DELETE FROM usertable WHERE ID= %s", m_nID);
+
+	m_BaseConnection->ExecuteSQL(strQuery);
 
 	return TRUE;
 };
@@ -159,11 +192,6 @@ END_MESSAGE_MAP()
 
 CCDatabaseDlg::CCDatabaseDlg(CWnd* pParent /*=nullptr*/)
 	: CDialogEx(IDD_CDATABASE_DIALOG, pParent)
-	, m_Name(_T(""))
-	, m_Surname(_T(""))
-	, m_PhoneNum(_T(""))
-	, m_EmailAddress(_T(""))
-	, m_Id(_T(""))
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 }
@@ -171,17 +199,12 @@ CCDatabaseDlg::CCDatabaseDlg(CWnd* pParent /*=nullptr*/)
 void CCDatabaseDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
-	DDX_Control(pDX, IDC_LIST1, m_ListControl);
-	DDX_Text(pDX, IDC_EDIT_ID, m_Id);
-	DDX_Text(pDX, IDC_EDIT_NAME, m_Name);
-	DDX_Text(pDX, IDC_EDIT_SURNAME, m_Surname);
-	DDX_Text(pDX, IDC_EDIT_PHONE_NUM, m_PhoneNum);
-	DDX_Text(pDX, IDC_EDIT_EMAIL_ADDRESS, m_EmailAddress);
-	DDX_Control(pDX, IDC_EDIT_ID, m_Id1);
-	DDX_Control(pDX, IDC_EDIT_NAME, m_Name1);
-	DDX_Control(pDX, IDC_EDIT_SURNAME, m_Surname1);
-	DDX_Control(pDX, IDC_EDIT_PHONE_NUM, m_PhoneNum1);
-	DDX_Control(pDX, IDC_EDIT_EMAIL_ADDRESS, m_EmailAddress1);
+	DDX_Control(pDX, IDC_LIST1, m_Grid);
+	DDX_Control(pDX, IDC_EDIT_ID, m_ecId);
+	DDX_Control(pDX, IDC_EDIT_NAME, m_ecName);
+	DDX_Control(pDX, IDC_EDIT_SURNAME, m_ecSurname);
+	DDX_Control(pDX, IDC_EDIT_PHONE_NUM, m_ecPhoneNum);
+	DDX_Control(pDX, IDC_EDIT_EMAIL_ADDRESS, m_ecEmailAddress);
 }
 
 BEGIN_MESSAGE_MAP(CCDatabaseDlg, CDialogEx)
@@ -245,7 +268,9 @@ BOOL CCDatabaseDlg::OnInitDialog()
 
 	m_ServerConnection.Open(NULL, false, false, sDsn);
 	m_oaUserContainer.m_BaseConnection = &m_ServerConnection;
+	m_oUserItems.m_BaseConnection = &m_ServerConnection;
 	m_oaUserContainer.OnLoad();
+
 	UpdateGrid(&m_oaUserContainer);
 
 	return TRUE;               // return TRUE  unless you set the focus to a control
@@ -326,7 +351,8 @@ void CCDatabaseDlg::OnEnChangeEditEmailAddress()
 ////////////////////////////////////////////////////////
 void CCDatabaseDlg::OnBnClickedReadData()
 {
-	CRUD(Action::R);
+	m_oaUserContainer.DeleteAll();
+	m_oaUserContainer.OnLoad();
 }
 
 ///////////////////////////////////////////////////////
@@ -334,7 +360,47 @@ void CCDatabaseDlg::OnBnClickedReadData()
 ///////////////////////////////////////////////////////
 void CCDatabaseDlg::OnBnClickedAddButton()
 {
-	CRUD(Action::C);
+	CUserItem* lpUserItem = NULL;
+
+	CString strFirstName, strLastName, strTelephoneNumber, strEmailAddress;
+	m_ecName.GetWindowTextW(strFirstName);
+	m_ecSurname.GetWindowTextW(strLastName);
+	m_ecPhoneNum.GetWindowTextW(strTelephoneNumber);
+	m_ecEmailAddress.GetWindowTextW(strEmailAddress);
+
+	if (m_oaUserContainer.IsEmpty())
+	{
+		CUserItem* lpUserItem = NULL;
+		lpUserItem = new CUserItem();
+
+		lpUserItem->m_strFirstName = strFirstName;
+		lpUserItem->m_strLastName = strLastName;
+		lpUserItem->m_strTelephoneNumber = strTelephoneNumber;
+		lpUserItem->m_strEmailAddress = strEmailAddress;
+
+		lpUserItem->OnSave();
+	}
+
+	for (int i = 0; i < m_Grid.GetItemCount(); i++)
+	{
+		for (int j = 0; j < m_oaUserContainer.GetSize(); j++)
+		{
+			lpUserItem = (CUserItem*)m_oaUserContainer.GetAt(j);
+
+			if (lpUserItem == NULL)
+			{
+				continue;
+			}
+
+			if (lpUserItem->m_strTelephoneNumber.Compare(m_Grid.GetItemText(i, 3)) == 0)
+			{
+				CString strError;
+				strError.Format(L"Вече има създаден запис с този телефонен номер (%s)!", m_Grid.GetItemText(i, 3));
+				AfxMessageBox(strError);
+				return;
+			}
+		}
+	}
 }
 
 ///////////////////////////////////////////////////////////
@@ -342,7 +408,29 @@ void CCDatabaseDlg::OnBnClickedAddButton()
 ///////////////////////////////////////////////////////////
 void CCDatabaseDlg::OnBnClickedUpdateButton()
 {
-	CRUD(Action::U);
+	int nSel = m_Grid.GetSelectionMark();
+	if (nSel < 0)
+	{
+		return;
+	}
+
+	CString strFirstName, strLastName, strTelephoneNumber, strEmailAddress;
+	m_ecName.GetWindowTextW(strFirstName);
+	m_ecSurname.GetWindowTextW(strLastName);
+	m_ecPhoneNum.GetWindowTextW(strTelephoneNumber);
+	m_ecEmailAddress.GetWindowTextW(strEmailAddress);
+
+	CUserItem* lpUserItem = NULL;
+	lpUserItem = (CUserItem*)m_oaUserContainer.GetAt(nSel);
+
+	lpUserItem->m_strFirstName = strFirstName;
+	lpUserItem->m_strLastName = strLastName;
+	lpUserItem->m_strTelephoneNumber = strTelephoneNumber;
+	lpUserItem->m_strEmailAddress = strEmailAddress;
+
+	lpUserItem->OnSave();
+
+	UpdateGrid(&m_oaUserContainer);
 }
 
 ///////////////////////////////////////////////////////////
@@ -350,7 +438,17 @@ void CCDatabaseDlg::OnBnClickedUpdateButton()
 ///////////////////////////////////////////////////////////
 void CCDatabaseDlg::OnBnClickedDeleteButton()
 {
-	CRUD(Action::D);
+	int nSel = m_Grid.GetSelectionMark();
+	if (nSel < 0)
+	{
+		return;
+	}
+
+	CUserItem* lpUserItem = NULL;
+	lpUserItem = (CUserItem*)m_oaUserContainer.GetAt(nSel);
+	lpUserItem->OnDelete();
+
+	UpdateGrid(&m_oaUserContainer);
 }
 
 ///////////////////////////////////////////////////////////////
@@ -358,7 +456,9 @@ void CCDatabaseDlg::OnBnClickedDeleteButton()
 ///////////////////////////////////////////////////////////////
 void CCDatabaseDlg::OnBnClickedButtonDeleteAllData()
 {
-	CRUD(Action::DA);
+	m_oaUserContainer.OnDeleteAll();
+
+	UpdateGrid(&m_oaUserContainer);
 }
 
 //////////////////////////////////////////
@@ -378,13 +478,13 @@ void CCDatabaseDlg::OnNMClickList1(NMHDR* pNMHDR, LRESULT* pResult)
 {
 	LPNMITEMACTIVATE pNMItemActivate = reinterpret_cast<LPNMITEMACTIVATE>(pNMHDR);
 
-	int row = m_ListControl.GetSelectionMark();
+	int row = m_Grid.GetSelectionMark();
 
-	m_Id1.SetWindowText(m_ListControl.GetItemText(row, 0));
-	m_Name1.SetWindowText(m_ListControl.GetItemText(row, 1));
-	m_Surname1.SetWindowText(m_ListControl.GetItemText(row, 2));
-	m_PhoneNum1.SetWindowText(m_ListControl.GetItemText(row, 3));
-	m_EmailAddress1.SetWindowText(m_ListControl.GetItemText(row, 4));
+	m_ecId.SetWindowText(m_Grid.GetItemText(row, 0));
+	m_ecName.SetWindowText(m_Grid.GetItemText(row, 1));
+	m_ecSurname.SetWindowText(m_Grid.GetItemText(row, 2));
+	m_ecPhoneNum.SetWindowText(m_Grid.GetItemText(row, 3));
+	m_ecEmailAddress.SetWindowText(m_Grid.GetItemText(row, 4));
 
 	*pResult = 0;
 }
@@ -394,187 +494,43 @@ void CCDatabaseDlg::OnNMClickList1(NMHDR* pNMHDR, LRESULT* pResult)
 ////////////////////////////////////////////////
 void CCDatabaseDlg::ResetListControl()
 {
-	m_ListControl.DeleteAllItems();
-	int iNbrOfColumns;
-	CHeaderCtrl* pHeader = (CHeaderCtrl*)m_ListControl.GetDlgItem(0);
-	if (pHeader) {
+	m_Grid.DeleteAllItems();
+
+	int iNbrOfColumns = 0;
+	CHeaderCtrl* pHeader = (CHeaderCtrl*)m_Grid.GetDlgItem(0);
+
+	if (pHeader)
+	{
 		iNbrOfColumns = pHeader->GetItemCount();
 	}
-	for (int i = iNbrOfColumns; i >= 0; i--) {
-		m_ListControl.DeleteColumn(i);
+
+	for (int i = iNbrOfColumns; i >= 0; i--)
+	{
+		m_Grid.DeleteColumn(i);
 	}
 }
-
-/////////////////////////////////////////////
-////////////// DATABASE ACTION ////////////// 
-/////////////////////////////////////////////
-void CCDatabaseDlg::CRUD(int action)
-{
-	// TODO: Add your control notification handler code here
-	CString str1 = _T("");
-	CString str2 = _T("");
-	CString str3 = _T("");
-	CString str4 = _T("");
-	CString str5 = _T("");
-
-	m_Name1.GetWindowTextW(str1);
-	m_Surname1.GetWindowTextW(str2);
-	m_PhoneNum1.GetWindowTextW(str3);
-	m_EmailAddress1.GetWindowTextW(str4);
-	m_Id1.GetWindowTextW(str5);
-		
-	CDatabase database;
-
-	// You must change above path if it's different
-	int iRec = 0;
-	int l = 0;
-	bool isexists = false;
-	bool tarsene = false;
-
-	CString SqlString;
-	CString userid, username, usersurname, userphonenumber, useremailaddress;
-	CString sDriver = L"MICROSOFT ACCESS DRIVER (*.mdb)";
-	CString sDsn, sMc;
-	CString sFile;
-	CString path = _T("\\userdb.mdb");
-	TCHAR buffer[MAX_PATH] = { 0 };
-
-	GetCurrentDirectory(MAX_PATH, buffer);
-
-	sFile.Append(buffer);
-	sFile.Append(path);
-
-	sMc.Format(_T("."));
-	// Build ODBC connection string
-	sDsn.Format(L"ODBC;DRIVER={%s};DSN='';DBQ=%s;", sDriver, sFile);
-
-	try
-	{
-		// Open the database
-		database.Open(NULL, false, false, sDsn);
-
-		// Allocate the recordset
-		CRecordset recset(&database);
-		switch (action)
-		{
-			// Reading data
-		case (R):
-			if (!str1.IsEmpty())
-			{
-				SqlString = "SELECT ID, uname, usurname, uphonenum, uemailaddress FROM usertable WHERE uname LIKE '%";
-				SqlString += str1;
-				SqlString += "%'";
-				tarsene = true;
-			}
-			else
-			{
-				SqlString = "SELECT ID, uname, usurname, uphonenum, uemailaddress " "FROM usertable";
-			}
-			break;
-
-			// Adding data
-		case (C):
-			for (int i = 0; i < m_ListControl.GetItemCount(); i++)
-			{
-				CString phnnmbr = m_ListControl.GetItemText(i, 3);
-				if (phnnmbr == str3)
-				{
-					AfxMessageBox(L"Вече има създаден запис с този телефонен номер!");
-					isexists = true;
-					break;
-				}
-			}
-
-			if (!isexists)
-			{
-				SqlString.Format(L"INSERT INTO usertable(uname, usurname, uphonenum, uemailaddress) VALUES('%s', '%s', '%s', '%s')", str1, str2, str3, str4);
-			}
-			else SqlString = "SELECT ID, uname, usurname, uphonenum, uemailaddress " "FROM usertable";
-			break;
-
-			// Updating data
-		case (U):
-				SqlString.Format(L"UPDATE usertable SET uname= '%s', usurname= '%s', uphonenum= '%s', uemailaddress= '%s' WHERE ID= %s", str1, str2, str3, str4, str5);
-			break;	
-
-			// Deleting data
-		case (D):
-			SqlString.Format(L"DELETE FROM usertable WHERE ID= %s", str5);
-			break;	
-
-			// Deleting All data	
-		case (DA):
-			SqlString.Format(L"DELETE FROM usertable");
-			break;
-		}
-		
-		database.ExecuteSQL(SqlString);
-		if (!tarsene)
-		{
-			SqlString = "SELECT ID, uname, usurname, uphonenum, uemailaddress " "FROM usertable";
-
-		// Build the SQL statement
-			SqlString = "SELECT ID, uname, usurname, uphonenum, uemailaddress " "FROM usertable";
-		}
-
-		// Execute the query
-		recset.Open(CRecordset::forwardOnly, SqlString, CRecordset::readOnly);
-
-		// Reset List control if there is any data
-		ResetListControl();
-
-		// populate Grids
-		m_ListControl.SetExtendedStyle(LVS_EX_FULLROWSELECT);
-
-		// Column width and heading
-		m_ListControl.InsertColumn(0, L"ID", LVCFMT_LEFT, 111);
-		m_ListControl.InsertColumn(1, L"Name", LVCFMT_CENTER, 200);
-		m_ListControl.InsertColumn(2, L"Surname", LVCFMT_CENTER, 200);
-		m_ListControl.InsertColumn(3, L"Phone number", LVCFMT_CENTER, 200);
-		m_ListControl.InsertColumn(4, L"E-mail address", LVCFMT_CENTER, 200);
-
-		// Loop through each record
-		while (!recset.IsEOF()) {
-			recset.GetFieldValue(_T("ID"), userid);
-			recset.GetFieldValue(_T("uname"), username);
-			recset.GetFieldValue(_T("usurname"), usersurname);
-			recset.GetFieldValue(_T("uphonenum"), userphonenumber);
-			recset.GetFieldValue(_T("uemailaddress"), useremailaddress);
-
-			// Insert values into the list control
-			iRec = m_ListControl.InsertItem(0, userid);
-			m_ListControl.SetItemText(0, 1, username);
-			m_ListControl.SetItemText(0, 2, usersurname);
-			m_ListControl.SetItemText(0, 3, userphonenumber);
-			m_ListControl.SetItemText(0, 4, useremailaddress);
-
-			// goto next record
-			recset.MoveNext();
-		}
-		// Close the database
-		database.Close();
-		Clear();
-	}
-	catch (CDBException* e)
-	{
-		// If a database exception occured, show error msg
-		AfxMessageBox(e->m_strError);
-	}
-}
-
 
 /// Clear data ///
 void CCDatabaseDlg::Clear()
 {
-	m_Id1.SetWindowTextW(L"");
-	m_Name1.SetWindowTextW(L"");
-	m_Surname1.SetWindowTextW(L"");
-	m_PhoneNum1.SetWindowTextW(L"");
-	m_EmailAddress1.SetWindowTextW(L"");
+	m_ecId.SetWindowTextW(L"");
+	m_ecName.SetWindowTextW(L"");
+	m_ecSurname.SetWindowTextW(L"");
+	m_ecPhoneNum.SetWindowTextW(L"");
+	m_ecEmailAddress.SetWindowTextW(L"");
 }
 
 void CCDatabaseDlg::UpdateGrid(CUserContainer* oaUserContainer)
 {
+	ResetListControl();
+
+	m_Grid.SetExtendedStyle(LVS_EX_FULLROWSELECT);
+	m_Grid.InsertColumn(0, L"ID", LVCFMT_LEFT, 111);
+	m_Grid.InsertColumn(1, L"Name", LVCFMT_CENTER, 200);
+	m_Grid.InsertColumn(2, L"Surname", LVCFMT_CENTER, 200);
+	m_Grid.InsertColumn(3, L"Phone number", LVCFMT_CENTER, 200);
+	m_Grid.InsertColumn(4, L"E-mail address", LVCFMT_CENTER, 200);
+
 	if (oaUserContainer == NULL)
 	{
 		return;
@@ -585,17 +541,15 @@ void CCDatabaseDlg::UpdateGrid(CUserContainer* oaUserContainer)
 	{
 		lpUserItem = (CUserItem*)oaUserContainer->GetAt(j);
 
-		if (lpUserItem == NULL)
+		if (lpUserItem != NULL)
 		{
-			break;
+			CString strBuff;
+			strBuff.Format(_T("%d"), lpUserItem->m_nID);
+			m_Grid.InsertItem(0, strBuff);
+			m_Grid.SetItemText(0, 1, lpUserItem->m_strFirstName);
+			m_Grid.SetItemText(0, 2, lpUserItem->m_strLastName);
+			m_Grid.SetItemText(0, 3, lpUserItem->m_strTelephoneNumber);
+			m_Grid.SetItemText(0, 4, lpUserItem->m_strEmailAddress);
 		}
-
-		CString strBuff;
-		strBuff.Format(_T("%d"), lpUserItem->m_nID);
-		m_ListControl.InsertItem(0, strBuff);
-		m_ListControl.SetItemText(0, 1, lpUserItem->m_strFirstName);
-		m_ListControl.SetItemText(0, 2, lpUserItem->m_strLastName);
-		m_ListControl.SetItemText(0, 3, lpUserItem->m_strTelephoneNumber);
-		m_ListControl.SetItemText(0, 4, lpUserItem->m_strEmailAddress);
 	}
 };
