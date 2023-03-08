@@ -12,6 +12,113 @@
 #define new DEBUG_NEW
 #endif
 
+
+/////////////////////////////////////////////////////////
+// CUserContainer
+CUserContainer::CUserContainer()
+{
+	m_BaseConnection = NULL;
+};
+
+CUserContainer::~CUserContainer()
+{
+	DeleteAll();
+	m_BaseConnection->Close();
+	delete m_BaseConnection;
+};
+
+void CUserContainer::OnLoad()
+{
+	if (m_BaseConnection == NULL)
+	{
+		return;
+	}
+
+	CRecordset pRecordset(m_BaseConnection);
+
+	CString strQuery, strBuff; 
+	strQuery = "SELECT ID, uname, usurname, uphonenum, uemailaddress FROM usertable";
+	m_BaseConnection->ExecuteSQL(strQuery);
+
+	pRecordset.Open(CRecordset::forwardOnly, strQuery, CRecordset::readOnly);
+
+	CUserItem* pUserItem = NULL;
+	while (!pRecordset.IsEOF())
+	{
+		pUserItem = new CUserItem;
+
+		pRecordset.GetFieldValue(_T("ID"), strBuff);
+		pUserItem->m_nID = _wtoi(strBuff);
+		pRecordset.GetFieldValue(_T("uname"), pUserItem->m_strFirstName);
+		pRecordset.GetFieldValue(_T("usurname"), pUserItem->m_strLastName);
+		pRecordset.GetFieldValue(_T("uphonenum"), pUserItem->m_strTelephoneNumber);
+		pRecordset.GetFieldValue(_T("uemailaddress"), pUserItem->m_strEmailAddress);
+
+		Add(pUserItem);
+		pRecordset.MoveNext();
+	}
+};
+
+void CUserContainer::DeleteAll()
+{
+	CUserItem* pUserItem;
+	for (int n = 0; n <= (GetSize() - 1); n++)
+	{
+		pUserItem = (CUserItem*)GetAt(n);
+		delete pUserItem;
+	}
+
+	RemoveAll();
+};
+
+/////////////////////////////////////////////////////////
+// CUserItem
+
+CUserItem::CUserItem()
+{
+	Clear();
+};
+
+CUserItem::~CUserItem()
+{
+
+};
+
+void CUserItem::Clear()
+{
+	m_nID = -1;
+	m_strFirstName.Empty();
+	m_strLastName.Empty();
+	m_strTelephoneNumber.Empty();
+	m_strEmailAddress.Empty();
+};
+
+BOOL CUserItem::OnSave()
+{
+	CString strQuery;
+
+	if (m_nID <= 0)
+	{
+		strQuery.Format(L"INSERT INTO usertable(uname, usurname, uphonenum, uemailaddress) VALUES('%s', '%s', '%s', '%s')"
+			, m_strFirstName, m_strLastName, m_strTelephoneNumber, m_strEmailAddress);
+	}
+	else
+	{
+		strQuery.Format(L"UPDATE usertable SET uname= '%s', usurname= '%s', uphonenum= '%s', uemailaddress= '%s' WHERE ID= %s"
+			, m_strFirstName, m_strLastName, m_strTelephoneNumber, m_strEmailAddress, m_nID);
+	}
+
+	return TRUE;
+};
+
+BOOL CUserItem::OnDelete()
+{
+	CString strQuery;
+	strQuery.Format(L"DELETE FROM usertable WHERE ID= %s", m_nID);
+
+	return TRUE;
+};
+
 // CAboutDlg dialog used for App About
 
 class CAboutDlg : public CDialogEx
@@ -122,8 +229,24 @@ BOOL CCDatabaseDlg::OnInitDialog()
 	SetIcon(m_hIcon, TRUE);			// Set big icon
 	SetIcon(m_hIcon, FALSE);		// Set small icon
 
+	CString SqlString;
+	CString userid, username, usersurname, userphonenumber, useremailaddress;
+	CString sDriver = L"MICROSOFT ACCESS DRIVER (*.mdb)";
+	CString sDsn, sMc;
+	CString sFile;
+	CString path = _T("\\userdb.mdb");
+	TCHAR buffer[MAX_PATH] = { 0 };
+	GetCurrentDirectory(MAX_PATH, buffer);
+	sFile.Append(buffer);
+	sFile.Append(path);
+	sMc.Format(_T("."));
 
-	CRUD(R);
+	sDsn.Format(L"ODBC;DRIVER={%s};DSN='';DBQ=%s;", sDriver, sFile);
+
+	m_ServerConnection.Open(NULL, false, false, sDsn);
+	m_oaUserContainer.m_BaseConnection = &m_ServerConnection;
+	m_oaUserContainer.OnLoad();
+	UpdateGrid(&m_oaUserContainer);
 
 	return TRUE;               // return TRUE  unless you set the focus to a control
 }
@@ -449,3 +572,30 @@ void CCDatabaseDlg::Clear()
 	m_PhoneNum1.SetWindowTextW(L"");
 	m_EmailAddress1.SetWindowTextW(L"");
 }
+
+void CCDatabaseDlg::UpdateGrid(CUserContainer* oaUserContainer)
+{
+	if (oaUserContainer == NULL)
+	{
+		return;
+	}
+
+	CUserItem* lpUserItem = NULL;
+	for (int j = 0; j < oaUserContainer->GetSize(); j++)
+	{
+		lpUserItem = (CUserItem*)oaUserContainer->GetAt(j);
+
+		if (lpUserItem == NULL)
+		{
+			break;
+		}
+
+		CString strBuff;
+		strBuff.Format(_T("%d"), lpUserItem->m_nID);
+		m_ListControl.InsertItem(0, strBuff);
+		m_ListControl.SetItemText(0, 1, lpUserItem->m_strFirstName);
+		m_ListControl.SetItemText(0, 2, lpUserItem->m_strLastName);
+		m_ListControl.SetItemText(0, 3, lpUserItem->m_strTelephoneNumber);
+		m_ListControl.SetItemText(0, 4, lpUserItem->m_strEmailAddress);
+	}
+};

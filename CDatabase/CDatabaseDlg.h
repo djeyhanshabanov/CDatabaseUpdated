@@ -7,7 +7,34 @@
 #include "afxdb.h"
 #include <ntddndis.h>
 
+class CUserContainer : public CObArray
+{
+public:
+	CUserContainer();
+	~CUserContainer();
 
+	CDatabase* m_BaseConnection;
+
+	void OnLoad();
+	void DeleteAll();
+};
+
+class CUserItem : public CObject
+{
+public:
+	CUserItem();
+	~CUserItem();
+
+	int m_nID;
+	CString m_strFirstName; // Лично име
+	CString m_strLastName; // Фамилно име
+	CString m_strTelephoneNumber; // Телефонен номер
+	CString m_strEmailAddress; // Електронна поща
+
+	void Clear();
+	BOOL OnSave();
+	BOOL OnDelete();
+};
 
 // CCDatabaseDlg dialog
 class CCDatabaseDlg : public CDialogEx
@@ -70,4 +97,8 @@ public:
 	CEdit m_PhoneNum1;              // Variable (Control)
 	CEdit m_EmailAddress1;          // Variable (Control)
 	void CCDatabaseDlg::Clear();
+
+	CDatabase m_ServerConnection;
+	CUserContainer m_oaUserContainer;
+	void UpdateGrid(CUserContainer* oaUserContainer);
 };
